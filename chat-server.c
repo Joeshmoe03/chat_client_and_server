@@ -1,5 +1,4 @@
 /* chat-server.c */
-
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -24,7 +23,7 @@ typedef struct clientinfo {
     char* ip; 						/*can get from struct remote_sa*/
 	int port; 						/*can get from struct remote_sa*/
 	int connfd; 					/*result of accept*/
-	char message[SOME_SIZE]; //SOME BUFFER FOR NOW
+	char msg[SOME_SIZE]; //SOME BUFFER FOR NOW
 	struct clientinfo *next;
 } client;
 
@@ -32,57 +31,102 @@ typedef struct clientinfo {
 static *client head = NULL;
 
 void insertClient() {
-	//accept 
+	return;	
 }
 
 void deleteClient() {
-
+	return;
 }
 
 void broadcast() {
+	return;
+}
 
+/* Make sure argument actually exists for port */
+char* getPort(int argc, char* argv[]) {
+	if(argc != 2) {
+		printf("SERVER FAILURE: specified unexpected number of arguments. Only pass the port number...");
+		exit(EXIT_FAILURE);
+	}
+	return argv[1];
+}
+
+/* Basic bind and create socket to port function for server */
+void creatBindSock(struct addrinfo* hintsP, struct addrinfo** resP, char** listen_fdP, char* listen_port) {
+	int rc;
+
+	/* Create a socket */
+	if((*listen_fdP = socket(PF_INET, SOCK_STREAM, 0)) < 0) {
+		printf("SERVER FAILURE: could not create socket");
+		exit(EXIT_FAILURE);
+	}
+	
+	/* Clear struct, specify to listen, getting addr, bind to port */
+	memset(hintsP, 0, sizeof(*hintsP));
+	*hintsP.ai_family = AF_INET;
+	*hintsP.ai_socktype = SOCK_STREAM;
+	*hints.ai_flags = AI_PASSIVE;
+	if((rc = getaddrinfo(NULL, listen_port, hintsP, respP)) != 0) {
+		printf("SERVER FAILURE: getaddrinfo failed: %s\n", gai_strerror(rc));
+		exit(EXIT_FAILURE);
+	}
+	if(bind(*listen_fdP, *resP->ai_addr, *resP->ai_addrlen) < 0) {
+		printf("SERVER FAILURE: Could not bind socket to port...");
+		exit(EXIT_FAILURE);
+	}
+	return;
 }
 
 int main(int argc, char *argv[]) {
-    char *listen_port;
-    int listen_fd, conn_fd;
-    struct addrinfo hints, *res;
-    int rc;
+	char* listen_port;
+    int listen_fd;	
+	struct addrinfo hints, *res;
     struct sockaddr_in remote_sa;
     uint16_t remote_port;
     socklen_t addrlen;
+
     char *remote_ip;
-    char buf[BUF_SIZE];
     int bytes_received;
 
-	/* Person running server specifies port */
-	listen_port = arv[1];
+	/* Person running server specifies port w/ error checking */
+	listen_port = getPort(argc, argv);
 
-	/* Create a socket */
-	listen_fd = socket(PF_INET, SOCK_STREAM, 0);
+	/* Create and bind socket to port for server w/ error checking */
+	creatBindSock(&hints, &res, &listen_fd, listen_port);
 
-	/* Bind socket to port for server */
-	...
+	/* We set to listen max */
+	if(listen(listen_fd, SOMAXCONN) < 0) {
+		perror("listen");
+		exit(EXIT_FAILURE);
+	}
 
-	/* Loop */
+	/* Loop body for connection */
 	while(1) {
 	
-	/* accept and insert client if not already */
-		accept connection;
-
+		/* Accept incoming connection */
+		addrlen = sizeof(remote_sa);
+		conn_fd = accept(listen_fd, (struct sockaddr *) &remote_sa, &addrlen);
+ 	
 		//TODO: LOCK THREAD
 		if connection not already in clients list based on connfd {
 			insertClient();
-			create new thread for incoming messages from this client - maybe;
+			create new thread for incoming messages from this client;
 		}
 		//TODO: UNLOCK THREAD
 	
 		//TODO: LOCK THREAD
-		rcv 
+		receive message from the connection;
+		traverse list to the correct client and update client struct with message and/or new nickname;
+		somehow save that user just changed nickname if specified to inform other clients later - in struct possibly;
 		//TODO: UNLOCK THREAD
 	
+		close connection
+		
+		check users that left when?
+
 		//TODO: LOCK THREAD
-		some kind of broadcast;
+		iterate over each user in the SLL:
+			send message from last user to each client
 		//TODO: UNLOCK THREAD
 
 	close at end
