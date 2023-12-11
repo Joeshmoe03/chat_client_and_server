@@ -33,10 +33,10 @@ char* getPort(int argc, char* argv[]);
 void creatBindSock(struct addrinfo* hintsP, struct addrinfo** resP, int* listen_fdP, char* listen_port);
 client* addClient(int client_fd, struct sockaddr_in remote_sa);
 void removClient(client* new_client);
-int reNick(char msg[BUF_SIZ], char* out_msg[BUF_SIZ], client* new_client);
-void exitMsg(char* out_msg[BUF_SIZ], client* new_client);
-void formatMsg(char msg[BUF_SIZ], char* out_msg[BUF_SIZ], client* new_client);
-int broadcast(char* out_msg[BUF_SIZ], int nbytes);
+int reNick(char msg[BUF_SIZ], char* out_msg, client* new_client);
+void exitMsg(char* out_msg, client* new_client);
+void formatMsg(char msg[BUF_SIZ], char* out_msg, client* new_client);
+int broadcast(char* out_msg, int nbytes);
 void* clientHandler(void* arg);
 
 int main(int argc, char *argv[]) {
@@ -92,7 +92,7 @@ int main(int argc, char *argv[]) {
 }
 
 /* Format informative message about renicknaming */
-int reNick(char msg[BUF_SIZ], char* out_msg[BUF_SIZ], client* new_client) {
+int reNick(char msg[BUF_SIZ], char* out_msg, client* new_client) {
 	char* token = strtok(msg, DELIM);
 	time_t timeval = time(NULL);
 	struct tm* tmstruct = localtime(&timeval);
@@ -104,7 +104,7 @@ int reNick(char msg[BUF_SIZ], char* out_msg[BUF_SIZ], client* new_client) {
 			pthread_mutex_lock(&mutex);
 
 			/* Set message to broadcast to this */
-			snprintf(*out_msg, BUF_SIZ, "%d:%d:%d: User %s (%s:%d) is now known as %s", tmstruct->tm_hour, tmstruct->tm_min, tmstruct->tm_sec, 
+			snprintf(out_msg, BUF_SIZ, "%d:%d:%d: User %s (%s:%d) is now known as %s", tmstruct->tm_hour, tmstruct->tm_min, tmstruct->tm_sec, 
 					 new_client->name, inet_ntoa(new_client->remote_sa.sin_addr), ntohs(new_client->remote_sa.sin_port), token);
 			
 			/* No need to realloc since buffer is already max that can go with a single send */
@@ -112,34 +112,34 @@ int reNick(char msg[BUF_SIZ], char* out_msg[BUF_SIZ], client* new_client) {
 			pthread_mutex_unlock(&mutex);
 			return 0;
 		}
-		return -1;
 	}
+	return -1;
 }
 
 /* Format the exit message */
-void exitMsg(char* out_msg[BUF_SIZ], client* new_client) {
+void exitMsg(char* out_msg, client* new_client) {
 	time_t timeval = time(NULL);
 	struct tm* tmstruct = localtime(&timeval);
 
 	/* Copy exit message to buffer */
-	snprintf(*out_msg, BUF_SIZ, "%d:%d:%d: User %s (%s:%d) has disconnected.", tmstruct->tm_hour, tmstruct->tm_min, tmstruct->tm_sec,
+	snprintf(out_msg, BUF_SIZ, "%d:%d:%d: User %s (%s:%d) has disconnected.", tmstruct->tm_hour, tmstruct->tm_min, tmstruct->tm_sec,
 			 new_client->name, inet_ntoa(new_client->remote_sa.sin_addr), ntohs(new_client->remote_sa.sin_port));
 	return;
 }
 
 /* Format a regular message */
-void formatMsg(char msg[BUF_SIZ], char* out_msg[BUF_SIZ], client* new_client) {
+void formatMsg(char msg[BUF_SIZ], char* out_msg, client* new_client) {
 	time_t timeval = time(NULL);
 	struct tm* tmstruct = localtime(&timeval);
 
 	/* Copy message to buffer */
-	snprintf(*out_msg, BUF_SIZ, "%d:%d:%d: %s: ", tmstruct->tm_hour, tmstruct->tm_min, tmstruct->tm_sec, new_client->name);
+	snprintf(out_msg, BUF_SIZ, "%d:%d:%d: %s: ", tmstruct->tm_hour, tmstruct->tm_min, tmstruct->tm_sec, new_client->name);
 	return;
 
 }
 
 /* Broadcasts message to ever client in client linked list */
-int broadcast(char* out_msg[BUF_SIZ], int nbytes) {
+int broadcast(char* out_msg, int nbytes) {
 	pthread_mutex_lock(&mutex);
 	client* cur_client = head_client;
 	while(cur_client != NULL) {
@@ -166,13 +166,13 @@ void* clientHandler(void* arg) {
 	while((nbytes_recv = recv(new_client->conn_fd, in_msg, BUF_SIZ, 0)) > 0) {
 		
 		/* Attempt to tokenize input to see if /nick command passed */
-		if(reNick(in_msg, &out_msg, new_client) == 0) {
-			broadcast(out_msg, BUF_SIZ);
+		if(reNick(in_msg, out_msg, new_client) == 0) {
+			broadcast(out_msg, BUF_SIZ); //TODO: WILL CHANGES PERSIST WITHOUT &
 			continue;
 		}
 		
 		/* Otherwise to regular message formatting and broadcasting */
-		formatMsg(msg, &out_msg, new_client);
+		formatMsg(in_msg, out_msg, new_client); //TODO: WILL CHANGES PERSIST WITHOUT &
 		broadcast(out_msg, BUF_SIZ);
 	}
 	/* Exit broadcasting setup */
@@ -232,7 +232,7 @@ void removClient(client* new_client) {
 /* Make sure argument actually exists for port */
 char* getPort(int argc, char* argv[]) {
 	if(argc != 2) {
-		printf("SERVER FAILURE: specified unexpected number of arguments. Only pass the port number...");
+		printf("SERVER FAILURE: specified unexpected number of arguments. Only pass the port number...\n");
 		exit(EXIT_FAILURE);
 	}
 	return argv[1];
@@ -244,21 +244,21 @@ void creatBindSock(struct addrinfo* hintsP, struct addrinfo** resP, int* listen_
 
 	/* Create a socket */
 	if((*listen_fdP = socket(PF_INET, SOCK_STREAM, 0)) < 0) {
-		printf("SERVER FAILURE: could not create socket");
+		printf("SERVER FAILURE: could not create socket\n");
 		exit(EXIT_FAILURE);
 	}
 	
 	/* Clear struct, specify to listen, getting addr, bind to port */
 	memset(hintsP, 0, sizeof(*hintsP));
-	*hintsP->ai_family = AF_INET;
-	*hintsP->ai_socktype = SOCK_STREAM;
-	*hintsP->ai_flags = AI_PASSIVE;
-	if((rc = getaddrinfo(NULL, listen_port, hintsP, respP)) != 0) {
+	hintsP->ai_family = AF_INET;
+	hintsP->ai_socktype = SOCK_STREAM;
+	hintsP->ai_flags = AI_PASSIVE;
+	if((rc = getaddrinfo(NULL, listen_port, hintsP, resP)) != 0) {
 		printf("SERVER FAILURE: getaddrinfo failed: %s\n", gai_strerror(rc));
 		exit(EXIT_FAILURE);
 	}
-	if(bind(*listen_fdP, *resP->ai_addr, *resP->ai_addrlen) < 0) {
-		printf("SERVER FAILURE: Could not bind socket to port...");
+	if(bind(*listen_fdP, (*resP)->ai_addr, (*resP)->ai_addrlen) < 0) {
+		printf("SERVER FAILURE: Could not bind socket to port...\n");
 		exit(EXIT_FAILURE);
 	}
 	return;
