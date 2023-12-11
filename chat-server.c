@@ -36,7 +36,7 @@ void removClient(client* new_client);
 int reNick(char msg[BUF_SIZ], char* out_msg[BUF_SIZ], client* new_client);
 void exitMsg(char* out_msg[BUF_SIZ], client* new_client);
 void formatMsg(char msg[BUF_SIZ], char* out_msg[BUF_SIZ], client* new_client);
-int broadcast(char out_msg[BUF_SIZ], int nbytes);
+int broadcast(char* out_msg[BUF_SIZ], int nbytes);
 void* clientHandler(void* arg);
 
 int main(int argc, char *argv[]) {
