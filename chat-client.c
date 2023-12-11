@@ -32,12 +32,12 @@ void *sendfunc(void *data) {
 		// fflush(stdout); needed?
 
 		msg[n] = '\0'; //SUS?
-		send(connfd, msg, n, 0);
+		send(connfd, msg, n+1, 0);
 	}
 
 	//SUS: to send server EOF
 	msg[0] = '\0';
-	send(connfd, msg, 0, 0);
+	send(connfd, msg+1, 0, 0);
 	printf("Exiting.");
 
 	return NULL;
