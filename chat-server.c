@@ -33,10 +33,20 @@ char* getPort(int argc, char* argv[]);
 void creatBindSock(struct addrinfo* hintsP, struct addrinfo** resP, int* listen_fdP, char* listen_port);
 client* addClient(int client_fd, struct sockaddr_in remote_sa);
 void removClient(client* new_client);
+
+/* Allows broadcast message formatting for when changing usernames */
 int reNick(char msg[BUF_SIZ], char* out_msg, client* new_client);
+
+/* Allows broadcast message formatting when exiting CTRL-D */
 void exitMsg(char* out_msg, client* new_client);
+
+/* Allows standard message broadcast */
 void formatMsg(char msg[BUF_SIZ], char* out_msg, client* new_client);
+
+/* Broadcasts message to all */
 int broadcast(char* out_msg, int nbytes);
+
+/* Client Handler */
 void* clientHandler(void* arg);
 
 int main(int argc, char *argv[]) {
@@ -104,7 +114,7 @@ int reNick(char msg[BUF_SIZ], char* out_msg, client* new_client) {
 			pthread_mutex_lock(&mutex);
 
 			/* Set message to broadcast to this */
-			snprintf(out_msg, BUF_SIZ, "%d:%d:%d: User %s (%s:%d) is now known as %s", tmstruct->tm_hour, tmstruct->tm_min, tmstruct->tm_sec, 
+			snprintf(out_msg, BUF_SIZ, "%d:%d:%d: User %s (%s:%d) is now known as %s\n", tmstruct->tm_hour, tmstruct->tm_min, tmstruct->tm_sec, 
 					 new_client->name, inet_ntoa(new_client->remote_sa.sin_addr), ntohs(new_client->remote_sa.sin_port), token);
 			
 			/* No need to realloc since buffer is already max that can go with a single send */
@@ -120,10 +130,12 @@ int reNick(char msg[BUF_SIZ], char* out_msg, client* new_client) {
 void exitMsg(char* out_msg, client* new_client) {
 	time_t timeval = time(NULL);
 	struct tm* tmstruct = localtime(&timeval);
+	pthread_mutex_lock(&mutex);
 
 	/* Copy exit message to buffer */
-	snprintf(out_msg, BUF_SIZ, "%d:%d:%d: User %s (%s:%d) has disconnected.", tmstruct->tm_hour, tmstruct->tm_min, tmstruct->tm_sec,
+	snprintf(out_msg, BUF_SIZ, "%d:%d:%d: User %s (%s:%d) has disconnected.\n", tmstruct->tm_hour, tmstruct->tm_min, tmstruct->tm_sec,
 			 new_client->name, inet_ntoa(new_client->remote_sa.sin_addr), ntohs(new_client->remote_sa.sin_port));
+	pthread_mutex_unlock(&mutex);
 	return;
 }
 
@@ -131,9 +143,11 @@ void exitMsg(char* out_msg, client* new_client) {
 void formatMsg(char msg[BUF_SIZ], char* out_msg, client* new_client) {
 	time_t timeval = time(NULL);
 	struct tm* tmstruct = localtime(&timeval);
+	pthread_mutex_lock(&mutex);
 
 	/* Copy message to buffer */
-	snprintf(out_msg, BUF_SIZ, "%d:%d:%d: %s: ", tmstruct->tm_hour, tmstruct->tm_min, tmstruct->tm_sec, new_client->name);
+	snprintf(out_msg, BUF_SIZ, "%d:%d:%d:%s:%s", tmstruct->tm_hour, tmstruct->tm_min, tmstruct->tm_sec, new_client->name, msg);
+	pthread_mutex_unlock(&mutex);
 	return;
 
 }
@@ -167,21 +181,21 @@ void* clientHandler(void* arg) {
 		
 		/* Attempt to tokenize input to see if /nick command passed */
 		if(reNick(in_msg, out_msg, new_client) == 0) {
-			broadcast(out_msg, BUF_SIZ); //TODO: WILL CHANGES PERSIST WITHOUT &
+			broadcast(out_msg, BUF_SIZ);
 			continue;
 		}
 		
 		/* Otherwise to regular message formatting and broadcasting */
-		formatMsg(in_msg, out_msg, new_client); //TODO: WILL CHANGES PERSIST WITHOUT &
-		broadcast(out_msg, BUF_SIZ);
+		formatMsg(in_msg, out_msg, new_client);
+		broadcast(out_msg, BUF_SIZ); //TODO: ERROR HANDLE
 	}
 	/* Exit broadcasting setup */
-	exitMsg(out_msg, new_client);
-	broadcast(out_msg, BUF_SIZ);
+	exitMsg(out_msg, new_client); 
+	broadcast(out_msg, BUF_SIZ); //TODO: ERROR HANDLE
 	
 	/* Clean up once client done and exits */
 	close(new_client->conn_fd);
-	removClient(new_client);
+	removClient(new_client); //TODO: ERROR HANDLE?
 	return NULL;
 }
 
