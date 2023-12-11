@@ -29,6 +29,8 @@ void *sendfunc(void *data) {
 			continue; //break; exit; are alternatives
 		}
 
+		// fflush(stdout); needed?
+
 		msg[n] = '\0'; //SUS?
 		send(connfd, msg, n, 0);
 	}
