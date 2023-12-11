@@ -56,16 +56,8 @@ void *recvfunc(void *data) {
 			puts("Connection closed by remote host.");
 			exit(EXIT_SUCCESS); //pthread exit instead?
 		}
-
+		msg[bytes_received] = '\0'; /* SUPER IMPORTANT*/
 		puts(msg);
-
-		/* format the things to print: message preceeded by timestamp; modify msg in server? - TODO: ACTUALLY DO ALL OF THIS IN THE SERVER
-			since it has to go to all clients */
-		// msg[bytes_received] = '\0'; /* SUPER IMPORTANT*/
-		time_t timeval = time(NULL);
-		struct tm *tmstruct = localtime(&timeval);        
-		snprintf(output, 4135, "%d:%d:%d: %s", tmstruct->tm_hour, tmstruct->tm_min, tmstruct->tm_sec , msg);
-		// puts(output);
 	}
 
 	return NULL;  
