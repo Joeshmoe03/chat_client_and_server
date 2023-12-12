@@ -38,7 +38,7 @@ void *sendfunc(void *data) {
 	//SUS: to send server EOF
 	msg[0] = '\0';
 	send(connfd, msg+1, 0, 0);
-	printf("Exiting.");
+	printf("Exiting.\n");
 
 	return NULL;
 }
