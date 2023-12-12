@@ -18,7 +18,8 @@
 
 pthread_mutex_t mutex;
 
-/* Our struct serving as list of clients w/ crucial info */
+/* Our struct serving as list of clients w/ crucial info. More things can be extracted from remote_sa struct, no need to store those
+ * individually. */
 typedef struct client {
 	char* name;
 	struct sockaddr_in remote_sa;
@@ -28,13 +29,23 @@ typedef struct client {
 
 /* Node information for singly-linked list */
 client* head_client = NULL;
+
+/* Our listen socket. Is global since I need sighandler to close this. */
 int listen_fd;
 
-/* Some functions of importance for handling sockets, ports, and clients */
+/* Simple function for getting port w/ error check. So simple, in fact, that it might be good to delete and just do argv[1] */
 char* getPort(int argc, char* argv[]);
+
+/* Create and bind socket */
 void creatBindSock(struct addrinfo* hintsP, struct addrinfo** resP, int* listen_fdP, char* listen_port);
+
+/* Adds a client when they connect */
 client* addClient(int client_fd, struct sockaddr_in remote_sa);
+
+/* Removes the client when they disconnect */
 int removClient(client* new_client);
+
+/* Destroys everything when server ends */
 void freeAll(void);
 
 /* Sighandler for sigint */
@@ -131,14 +142,21 @@ void sigintHandler(int signum) {
 /* Destroys linked list and does cleanup */
 void freeAll(void) {
 
-	/* Iterate thru and destroy struct with free */
+	/* Iterate thru and destroy struct with free. Start at head. */
 	pthread_mutex_lock(&mutex);
 	client* cur_client = head_client;
 	client* next_client;
 	while(cur_client != NULL) {
 		next_client = cur_client->next;
+
+		/* Close all connected sockets */
+		close(cur_client->conn_fd);
+
+		/* Free this member of linked list */
 		free(cur_client->name);
 		free(cur_client);
+	
+		/* Move on to next item of linked list */
 		cur_client = next_client;
 	}
 	pthread_mutex_unlock(&mutex);
@@ -148,7 +166,7 @@ void freeAll(void) {
 	pthread_mutex_destroy(&mutex);
 }
 
-/* Format informative message about renicknaming */
+/* Format informative message about renicknaming. This is out_msg is formatted for broadcasting back to each client. */
 int reNick(char msg[BUF_SIZ], char* out_msg, client* new_client, int* nbytes_send) {
 
 	/* Unfortunately, strtok() is destructive to original input and so I am forced to copy and perform parsing on copy. 		 *
@@ -165,25 +183,34 @@ int reNick(char msg[BUF_SIZ], char* out_msg, client* new_client, int* nbytes_sen
 		free(msg_cpy);
 		return -1;
 	}
+
+	/* Time info for informative renick message */
 	time_t timeval = time(NULL);
 	struct tm* tmstruct = localtime(&timeval);
 
-	/* First token is is nickname command */
+	/* First token is is /nick command */
 	if(strcmp(token, "/nick") == 0) {
 		token = strtok(NULL, CMD_DELIM);
+
+		/* The user actually did enter a second thing after the nick command */
 		if(token != NULL) {
 			pthread_mutex_lock(&mutex);
 
-			/* Set message to broadcast to this */
+			/* Set out_msg message to broadcast to this */
 			*nbytes_send = snprintf(out_msg, BUF_SIZ, "%d:%d:%d: User %s (%s:%d) is now known as %s", tmstruct->tm_hour, tmstruct->tm_min, tmstruct->tm_sec, 
 					 				new_client->name, inet_ntoa(new_client->remote_sa.sin_addr), ntohs(new_client->remote_sa.sin_port), token);
 			
 			/* No need to realloc since buffer is already max that can go with a single send */
-			token[strlen(token)] = '\0';
+			token[strlen(token) + 1] = '\0';
 			strncpy(new_client->name, token, strlen(token) + 1);
 			pthread_mutex_unlock(&mutex);
 			free(msg_cpy);
 			return 1;
+		} 
+
+		/* User only inputted /nick command - bad user... bad. Just skip. */
+		else {
+			return -1;
 		}
 	}
 	free(msg_cpy);
@@ -192,26 +219,33 @@ int reNick(char msg[BUF_SIZ], char* out_msg, client* new_client, int* nbytes_sen
 
 /* Format the exit message */
 int exitMsg(char* out_msg, client* new_client, int* nbytes_send) {
+
+	/* Relevant time information */
 	time_t timeval = time(NULL);
 	struct tm* tmstruct = localtime(&timeval);
 	pthread_mutex_lock(&mutex);
 
-	/* Copy exit message to buffer */
+	/* Copy exit message w/ client leaving info to out_msg buffer. Nothing crazy. */
 	*nbytes_send = snprintf(out_msg, BUF_SIZ, "%d:%d:%d: User %s (%s:%d) has disconnected.", tmstruct->tm_hour, tmstruct->tm_min, tmstruct->tm_sec,
 			 new_client->name, inet_ntoa(new_client->remote_sa.sin_addr), ntohs(new_client->remote_sa.sin_port));
 	pthread_mutex_unlock(&mutex);
 	return 0;
 }
 
-/* Format a regular message */
+/* Format a regular message. Nothing crazy. */
 int formatMsg(char msg[BUF_SIZ], char* out_msg, client* new_client, int* nbytes_send) {
+
+	/* Formal guarantee of NULL termination of inp message: extra protection against if user sent something way too big, effectively leading to lacking NULL byte */
+	msg[BUF_SIZ - 1] = '\0';
+
+	/* Relevant time information */
 	time_t timeval = time(NULL);
 	struct tm* tmstruct = localtime(&timeval);
 	pthread_mutex_lock(&mutex);
 
-	/* This delimeter ensures if user its enter (\n) at end to send msg, it removes new line */
+	/* This delimeter ensures if user its enter (\n) at end to send msg, it removes new line. Users are not permitted to do multi-parapgrah inputs. 
+ 	 * Also nice is that strtok replaces all delimeters with NULL */
 	msg = strtok(msg, MSG_DELIM);
-	msg[strlen(msg)] = '\0';
 	
 	/* User entered new line with no message */
 	if(msg == NULL) {
@@ -228,9 +262,15 @@ int formatMsg(char msg[BUF_SIZ], char* out_msg, client* new_client, int* nbytes_
 int broadcast(char* out_msg, int nbytes) {
 	pthread_mutex_lock(&mutex);
 	client* cur_client = head_client;
-	out_msg[BUF_SIZ] = '\0';
+
+	/* Guarantee that null termination is present before sending */
+	out_msg[BUF_SIZ - 1] = '\0';
+	puts(out_msg); //TODO REMOVE
+	printf("%d\n", nbytes + 1);
+
+	/* Iterate thru clients and broadcast */
 	while(cur_client != NULL) {
-		if(send(cur_client->conn_fd, out_msg, nbytes + 1, 0) < 0) {
+		if(send(cur_client->conn_fd, out_msg, BUF_SIZ, 0) < 0) { //TODO was nbytes + 1
 			pthread_mutex_unlock(&mutex);
 			return -1;
 		}
@@ -259,7 +299,10 @@ void* clientHandler(void* arg) {
 			broadcast(out_msg, nbytes_send);
 			puts(out_msg);
 			continue;
-		} else if (reNick_success == -1) {
+		} 
+		
+		/* User made a bad rename attempt. Bad user! Ignore incompetent user input. */
+		else if (reNick_success == -1) {
 			continue;
 		}
 		
@@ -270,7 +313,7 @@ void* clientHandler(void* arg) {
 		broadcast(out_msg, nbytes_send);
 	}
 
-	/* Exit broadcasting setup */
+	/* Exit broadcasting setup. Arrives here after CTRL-D */
 	exitMsg(out_msg, new_client, &nbytes_send);
 	printf("Lost connection from %s.\n", new_client->name);
 	broadcast(out_msg, nbytes_send);
@@ -284,6 +327,8 @@ void* clientHandler(void* arg) {
 /* Function for adding new connected clients to tracking */
 client* addClient(int client_fd, struct sockaddr_in client_sa) {
 	client* new_client;
+
+	/* Client always joins as an unknown */
 	char* default_name = "unknown";
 
 	/* Set aside space for new client info */
@@ -321,6 +366,8 @@ client* addClient(int client_fd, struct sockaddr_in client_sa) {
 int removClient(client* del_client) {
 	pthread_mutex_lock(&mutex);
 	client* cur_client = head_client;
+
+	/* Iterate over entire client list to see if the client we want to delete is there */
 	if(cur_client == del_client) {
 		head_client = cur_client->next;
 		free(cur_client->name);
@@ -336,8 +383,10 @@ int removClient(client* del_client) {
 			pthread_mutex_unlock(&mutex);
 			return 0;
 		}
-	}	
+	}
 	pthread_mutex_unlock(&mutex);
+
+	/* Failed to find the client */
 	return -1;
 }
 
