@@ -52,16 +52,16 @@ void freeAll(void);
 void sigintHandler(int signum);
 
 /* Allows broadcast message formatting for when changing usernames */
-int reNick(char msg[BUF_SIZ], char* out_msg, client* new_client, int* nbytes_send);
+int reNick(char msg[BUF_SIZ], char* out_msg, client* new_client);
 
 /* Allows broadcast message formatting when exiting CTRL-D */
-int exitMsg(char* out_msg, client* new_client, int* nbytes_send);
+int exitMsg(char* out_msg, client* new_client);
 
 /* Allows standard message broadcast */
-int formatMsg(char msg[BUF_SIZ], char* out_msg, client* new_client, int* nbytes_send);
+int formatMsg(char msg[BUF_SIZ], char* out_msg, client* new_client);
 
 /* Broadcasts message to all */
-int broadcast(char* out_msg, int nbytes);
+int broadcast(char* out_msg);
 
 /* Client Handler */
 void* clientHandler(void* arg);
@@ -127,14 +127,14 @@ int main(int argc, char *argv[]) {
 			continue;
 		}
 		pthread_detach(new_thread);
-	} 
+	}
 }
 
 void sigintHandler(int signum) {
 
 	/* Free everything and close socket */	
 	freeAll();
- 
+
 	/* Kill process and all associated threads */
 	kill(getpid(), SIGTERM);
 }
@@ -167,10 +167,11 @@ void freeAll(void) {
 }
 
 /* Format informative message about renicknaming. This is out_msg is formatted for broadcasting back to each client. */
-int reNick(char msg[BUF_SIZ], char* out_msg, client* new_client, int* nbytes_send) {
+int reNick(char msg[BUF_SIZ], char* out_msg, client* new_client) {
 
 	/* Unfortunately, strtok() is destructive to original input and so I am forced to copy and perform parsing on copy. 		 *
  	 * See: https://wiki.sei.cmu.edu/confluence/display/c/STR06-C.+Do+not+assume+that+strtok()+leaves+the+parse+string+unchanged */
+	msg[BUF_SIZ - 1] = '\0';
 	char* msg_cpy = malloc(strlen(msg) + 1);
 	if(msg_cpy == NULL) {
 		return -1;
@@ -197,7 +198,7 @@ int reNick(char msg[BUF_SIZ], char* out_msg, client* new_client, int* nbytes_sen
 			pthread_mutex_lock(&mutex);
 
 			/* Set out_msg message to broadcast to this */
-			*nbytes_send = snprintf(out_msg, BUF_SIZ, "%d:%d:%d: User %s (%s:%d) is now known as %s", tmstruct->tm_hour, tmstruct->tm_min, tmstruct->tm_sec, 
+			snprintf(out_msg, BUF_SIZ, "%d:%d:%d: User %s (%s:%d) is now known as %s", tmstruct->tm_hour, tmstruct->tm_min, tmstruct->tm_sec, 
 					 				new_client->name, inet_ntoa(new_client->remote_sa.sin_addr), ntohs(new_client->remote_sa.sin_port), token);
 			
 			/* No need to realloc since buffer is already max that can go with a single send */
@@ -208,8 +209,9 @@ int reNick(char msg[BUF_SIZ], char* out_msg, client* new_client, int* nbytes_sen
 			return 1;
 		} 
 
-		/* User only inputted /nick command - bad user... bad. Just skip. */
+		/* User only inputted /nick command w/ no name - bad user... bad. Just skip. */
 		else {
+			free(msg_cpy);
 			return -1;
 		}
 	}
@@ -218,7 +220,7 @@ int reNick(char msg[BUF_SIZ], char* out_msg, client* new_client, int* nbytes_sen
 }
 
 /* Format the exit message */
-int exitMsg(char* out_msg, client* new_client, int* nbytes_send) {
+int exitMsg(char* out_msg, client* new_client) {
 
 	/* Relevant time information */
 	time_t timeval = time(NULL);
@@ -226,14 +228,14 @@ int exitMsg(char* out_msg, client* new_client, int* nbytes_send) {
 	pthread_mutex_lock(&mutex);
 
 	/* Copy exit message w/ client leaving info to out_msg buffer. Nothing crazy. */
-	*nbytes_send = snprintf(out_msg, BUF_SIZ, "%d:%d:%d: User %s (%s:%d) has disconnected.", tmstruct->tm_hour, tmstruct->tm_min, tmstruct->tm_sec,
+	snprintf(out_msg, BUF_SIZ, "%d:%d:%d: User %s (%s:%d) has disconnected.", tmstruct->tm_hour, tmstruct->tm_min, tmstruct->tm_sec,
 			 new_client->name, inet_ntoa(new_client->remote_sa.sin_addr), ntohs(new_client->remote_sa.sin_port));
 	pthread_mutex_unlock(&mutex);
 	return 0;
 }
 
 /* Format a regular message. Nothing crazy. */
-int formatMsg(char msg[BUF_SIZ], char* out_msg, client* new_client, int* nbytes_send) {
+int formatMsg(char msg[BUF_SIZ], char* out_msg, client* new_client) {
 
 	/* Formal guarantee of NULL termination of inp message: extra protection against if user sent something way too big, effectively leading to lacking NULL byte */
 	msg[BUF_SIZ - 1] = '\0';
@@ -253,24 +255,22 @@ int formatMsg(char msg[BUF_SIZ], char* out_msg, client* new_client, int* nbytes_
 	}
 
 	/* Copy message to buffer */
-	*nbytes_send = snprintf(out_msg, BUF_SIZ, "%d:%d:%d: %s: %s", tmstruct->tm_hour, tmstruct->tm_min, tmstruct->tm_sec, new_client->name, msg);
+	snprintf(out_msg, BUF_SIZ, "%d:%d:%d: %s: %s", tmstruct->tm_hour, tmstruct->tm_min, tmstruct->tm_sec, new_client->name, msg);
 	pthread_mutex_unlock(&mutex);
 	return 0;
 }
 
 /* Broadcasts message to ever client in client linked list */
-int broadcast(char* out_msg, int nbytes) {
+int broadcast(char* out_msg) {
 	pthread_mutex_lock(&mutex);
 	client* cur_client = head_client;
 
 	/* Guarantee that null termination is present before sending */
 	out_msg[BUF_SIZ - 1] = '\0';
-	puts(out_msg); //TODO REMOVE
-	printf("%d\n", nbytes + 1);
 
 	/* Iterate thru clients and broadcast */
 	while(cur_client != NULL) {
-		if(send(cur_client->conn_fd, out_msg, BUF_SIZ, 0) < 0) { //TODO was nbytes + 1
+		if(send(cur_client->conn_fd, out_msg, strlen(out_msg) + 1, 0) < 0) {
 			pthread_mutex_unlock(&mutex);
 			return -1;
 		}
@@ -286,7 +286,6 @@ void* clientHandler(void* arg) {
 
 	/* Message stuff */
 	int nbytes_recv;
-	int nbytes_send;
 	char in_msg[BUF_SIZ];
 	char out_msg[BUF_SIZ];
 	int reNick_success;	
@@ -295,28 +294,28 @@ void* clientHandler(void* arg) {
 	while((nbytes_recv = recv(new_client->conn_fd, in_msg, BUF_SIZ, 0)) > 0) {
 	
 		/* Attempt to tokenize input to see if /nick command passed, tokenization failure gives us -1 which means msg was bad */
-		if((reNick_success = reNick(in_msg, out_msg, new_client, &nbytes_send)) == 1) { 
-			broadcast(out_msg, nbytes_send);
+		if((reNick_success = reNick(in_msg, out_msg, new_client)) == 1) { 
+			broadcast(out_msg);
 			puts(out_msg);
 			continue;
 		} 
-		
+
 		/* User made a bad rename attempt. Bad user! Ignore incompetent user input. */
 		else if (reNick_success == -1) {
 			continue;
 		}
-		
+
 		/* Msg was not a command: otherwise to regular message formatting and broadcasting */
-		if(formatMsg(in_msg, out_msg, new_client, &nbytes_send) < 0) {
+		if(formatMsg(in_msg, out_msg, new_client) < 0) {
 			continue;
 		}
-		broadcast(out_msg, nbytes_send);
+		broadcast(out_msg);
 	}
 
 	/* Exit broadcasting setup. Arrives here after CTRL-D */
-	exitMsg(out_msg, new_client, &nbytes_send);
+	exitMsg(out_msg, new_client);
 	printf("Lost connection from %s.\n", new_client->name);
-	broadcast(out_msg, nbytes_send);
+	broadcast(out_msg);
 	
 	/* Clean up once client done and exits */
 	close(new_client->conn_fd);

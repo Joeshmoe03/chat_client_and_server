@@ -19,7 +19,7 @@ static int connfd;
 void *sendfunc(void *data) {
 
 	/* Buffer for message and its respective length */
-	char msg[BUF_SIZE+1];
+	char msg[BUF_SIZE];
 	int n; 
 
 	/* Infinite loop for send() */
@@ -29,15 +29,17 @@ void *sendfunc(void *data) {
 			continue; //break; exit; are alternatives
 		}
 
-		// fflush(stdout); needed?
+		if(n > 4096) {
+			msg[BUF_SIZE-1] = '\0';
+		}
 
-		msg[n] = '\0'; //SUS?
+		msg[n] = '\0';
 		send(connfd, msg, n+1, 0);
 	}
 
-	//SUS: to send server EOF
+	/* Send server "EOF" in event of client disconnect (Ctrl-D) */
 	msg[0] = '\0';
-	send(connfd, msg+1, 0, 0);
+	send(connfd, msg, 0, 0);
 	printf("Exiting.\n");
 
 	return NULL;
@@ -45,26 +47,26 @@ void *sendfunc(void *data) {
 
 void *recvfunc(void *data) {
 
-	/* Buffer to store incoming message info */
+	/* Buffer to store incoming message info and its respective length*/
 	char msg[BUF_SIZE+1];
-	// char output[BUF_SIZE];
 	int bytes_received;
 
 	/* Infinite loop for recv() */
 	while(1) {
 
-		/*upon server termination using, clients will terminate */
+		/*upon server termination, clients will terminate */
 		if((bytes_received = recv(connfd, msg, BUF_SIZE, 0)) == 0) {
 			puts("Connection closed by remote host.");
-			exit(EXIT_SUCCESS); //pthread exit instead?
+			exit(EXIT_SUCCESS);
 		}
-		msg[bytes_received] = '\0'; /* SUPER IMPORTANT*/
+
+		/* Display null terminated message that server has sent */
+		msg[bytes_received] = '\0';
 		puts(msg);
 	}
 
 	return NULL;  
 }
-
 
 int main(int argc, char *argv[])
 {
@@ -72,52 +74,56 @@ int main(int argc, char *argv[])
 	struct addrinfo hints, *res;
 	int rc;
 
-	void *retval;
-
+	if (argc != 3) {
+		printf("CLIENT FAILURE: specified unexpected number of arguments. Only provide hostname and port number.\n");
+		exit(EXIT_FAILURE);
+	}
+	
 	dest_hostname = argv[1];
 	dest_port     = argv[2];
 
-	/* create a socket */
+	/* Create a socket */
 	connfd = socket(PF_INET, SOCK_STREAM, 0);
 	if(connfd < 0) {
 		perror("socket");
 		exit(EXIT_FAILURE);
 	}
 
-	/* client usually doesn't bind, which lets kernel pick a port number */
-
-	/* but we do need to find the IP address of the server */
+	/* Client usually doesn't bind, which lets kernel pick a port number, but we do need to find the IP address of the server */
 	memset(&hints, 0, sizeof(hints));
 	hints.ai_family = AF_INET;
 	hints.ai_socktype = SOCK_STREAM;
 	if((rc = getaddrinfo(dest_hostname, dest_port, &hints, &res)) != 0) {
 		printf("getaddrinfo failed: %s\n", gai_strerror(rc));
+		freeaddrinfo(res);
 		exit(EXIT_FAILURE);
 	}
 
-	/* connect to the server */
+	/* Connect to the server */
 	if(connect(connfd, res->ai_addr, res->ai_addrlen) < 0) {
 		perror("connect");
+		freeaddrinfo(res);
 		exit(EXIT_FAILURE);
 	}
 
 	printf("Connected\n");
 
-	/* create separate threads for send & recv */
+	/* Create separate threads for send & recv */
 	pthread_t sendthread, recvthread;
+
 	if(pthread_create(&sendthread, NULL, sendfunc, NULL) != 0) {
 		perror("pthread_create");
 	}
-	if(pthread_create(&recvthread, NULL, recvfunc, NULL) !=0) {
+
+	if(pthread_create(&recvthread, NULL, recvfunc, NULL) != 0) {
 		perror("pthread_create");
 	}
 
-	/*join threads, so they are ensured to finish their duty ?*/
-	if(pthread_join(sendthread, &retval) != 0) {
+	/* Join sending thread, so we are ensured it finishes its duty */
+	if(pthread_join(sendthread, NULL) != 0) {
 		perror("pthread_join");
 	}
-	//pthread_join(recvthread, &retval); // won't work b/cuz the loop in recvthread is infinite so that thread will never finish, think it's fine
-	//make it detached? or make it exit? or do we even need this?
 
+	freeaddrinfo(res);
 	close(connfd);
 }
