@@ -2,6 +2,8 @@ CFLAGS=-Wall -g -pedantic
 
 PROGS=chat-server chat-client
 
+all: chat-server chat-client
+
 chat-server: chat-server.c
 	gcc $(CFLAGS) -o $@ $^
 
