@@ -28,13 +28,10 @@ void *sendfunc(void *data) {
 			perror("read");
 			continue;
 		}
-
-		if(n > BUF_SIZE) {
-			msg[BUF_SIZE-1] = '\0';
-		}
-
+		
+		/* n shoulder never be > 4096: the max read is 4096. Just ensure null termination. */
 		msg[n] = '\0';
-		send(connfd, msg, n+1, 0);
+		send(connfd, msg, n, 0);
 	}
 
 	/* Send server "EOF" in event of client disconnect (Ctrl-D) */

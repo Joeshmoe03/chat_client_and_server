@@ -37,7 +37,7 @@ int listen_fd;
 char* getPort(int argc, char* argv[]);
 
 /* Create and bind socket */
-void creatBindSock(struct addrinfo* hintsP, struct addrinfo** resP, int* listen_fdP, char* listen_port);
+int createBindSock(struct addrinfo* hintsP, struct addrinfo** resP, int* listen_fdP, char* listen_port);
 
 /* Adds a client when they connect */
 client* addClient(int client_fd, struct sockaddr_in remote_sa);
@@ -77,10 +77,14 @@ int main(int argc, char *argv[]) {
 	socklen_t addrlen;
 
 	/* Person running server specifies port w/ error checking */
-	listen_port = getPort(argc, argv);
+	if((listen_port = getPort(argc, argv)) == NULL) {
+		exit(EXIT_FAILURE);
+	}
 
 	/* Create and bind socket to port for server w/ error checking */
-	creatBindSock(&hints, &res, &listen_fd, listen_port);
+	if(createBindSock(&hints, &res, &listen_fd, listen_port) < 0) {
+		exit(EXIT_FAILURE);
+	}
 
 	/* We set to listen max */
 	if(listen(listen_fd, SOMAXCONN) < 0) {
@@ -387,19 +391,19 @@ int removeClient(client* del_client) {
 char* getPort(int argc, char* argv[]) {
 	if(argc != 2) {
 		printf("SERVER FAILURE: specified unexpected number of arguments. Only pass the port number...\n");
-		exit(EXIT_FAILURE);
+		return NULL;
 	}
 	return argv[1];
 }
 
 /* Basic bind and create socket to port function for server */
-void creatBindSock(struct addrinfo* hintsP, struct addrinfo** resP, int* listen_fdP, char* listen_port) {
+int createBindSock(struct addrinfo* hintsP, struct addrinfo** resP, int* listen_fdP, char* listen_port) {
 	int rc;
 
 	/* Create a socket */
 	if((*listen_fdP = socket(PF_INET, SOCK_STREAM, 0)) < 0) {
 		printf("SERVER FAILURE: could not create socket\n");
-		exit(EXIT_FAILURE);
+		return -1;
 	}
 	
 	/* Clear struct, specify to listen, getting addr, bind to port */
@@ -409,11 +413,11 @@ void creatBindSock(struct addrinfo* hintsP, struct addrinfo** resP, int* listen_
 	hintsP->ai_flags = AI_PASSIVE;
 	if((rc = getaddrinfo(NULL, listen_port, hintsP, resP)) != 0) {
 		printf("SERVER FAILURE: getaddrinfo failed: %s\n", gai_strerror(rc));
-		exit(EXIT_FAILURE);
+		return -1;
 	}
 	if(bind(*listen_fdP, (*resP)->ai_addr, (*resP)->ai_addrlen) < 0) {
 		printf("SERVER FAILURE: Could not bind socket to port...\n");
-		exit(EXIT_FAILURE);
+		return -1;
 	}
-	return;
+	return 0;
 }
