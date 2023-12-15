@@ -43,7 +43,7 @@ void creatBindSock(struct addrinfo* hintsP, struct addrinfo** resP, int* listen_
 client* addClient(int client_fd, struct sockaddr_in remote_sa);
 
 /* Removes the client when they disconnect */
-int removClient(client* new_client);
+int removeClient(client* new_client);
 
 /* Destroys everything when server ends */
 void freeAll(void);
@@ -122,7 +122,7 @@ int main(int argc, char *argv[]) {
 		/* New thread for that client that was connected */
 		pthread_t new_thread;
 		if(pthread_create(&new_thread, NULL, clientHandler, (void*)new_client) < 0) {
-			removClient(new_client);
+			removeClient(new_client);
 			perror("pthread_create");
 			continue;
 		}
@@ -195,16 +195,14 @@ int reNick(char msg[BUF_SIZ], char* out_msg, client* new_client) {
 
 		/* The user actually did enter a second thing after the nick command */
 		if(token != NULL) {
-			pthread_mutex_lock(&mutex);
 
 			/* Set out_msg message to broadcast to this */
-			snprintf(out_msg, BUF_SIZ, "%d:%d:%d: User %s (%s:%d) is now known as %s", tmstruct->tm_hour, tmstruct->tm_min, tmstruct->tm_sec, 
+			snprintf(out_msg, BUF_SIZ, "%02d:%02d:%02d: User %s (%s:%d) is now known as %s", tmstruct->tm_hour, tmstruct->tm_min, tmstruct->tm_sec, 
 					 				new_client->name, inet_ntoa(new_client->remote_sa.sin_addr), ntohs(new_client->remote_sa.sin_port), token);
 			
 			/* No need to realloc since buffer is already max that can go with a single send */
 			token[strlen(token) + 1] = '\0';
 			strncpy(new_client->name, token, strlen(token) + 1);
-			pthread_mutex_unlock(&mutex);
 			free(msg_cpy);
 			return 1;
 		} 
@@ -225,12 +223,10 @@ int exitMsg(char* out_msg, client* new_client) {
 	/* Relevant time information */
 	time_t timeval = time(NULL);
 	struct tm* tmstruct = localtime(&timeval);
-	pthread_mutex_lock(&mutex);
 
 	/* Copy exit message w/ client leaving info to out_msg buffer. Nothing crazy. */
-	snprintf(out_msg, BUF_SIZ, "%d:%d:%d: User %s (%s:%d) has disconnected.", tmstruct->tm_hour, tmstruct->tm_min, tmstruct->tm_sec,
+	snprintf(out_msg, BUF_SIZ, "%02d:%02d:%02d: User %s (%s:%d) has disconnected.", tmstruct->tm_hour, tmstruct->tm_min, tmstruct->tm_sec,
 			 new_client->name, inet_ntoa(new_client->remote_sa.sin_addr), ntohs(new_client->remote_sa.sin_port));
-	pthread_mutex_unlock(&mutex);
 	return 0;
 }
 
@@ -243,7 +239,6 @@ int formatMsg(char msg[BUF_SIZ], char* out_msg, client* new_client) {
 	/* Relevant time information */
 	time_t timeval = time(NULL);
 	struct tm* tmstruct = localtime(&timeval);
-	pthread_mutex_lock(&mutex);
 
 	/* This delimeter ensures if user its enter (\n) at end to send msg, it removes new line. Users are not permitted to do multi-parapgrah inputs. 
  	 * Also nice is that strtok replaces all delimeters with NULL */
@@ -255,8 +250,7 @@ int formatMsg(char msg[BUF_SIZ], char* out_msg, client* new_client) {
 	}
 
 	/* Copy message to buffer */
-	snprintf(out_msg, BUF_SIZ, "%d:%d:%d: %s: %s", tmstruct->tm_hour, tmstruct->tm_min, tmstruct->tm_sec, new_client->name, msg);
-	pthread_mutex_unlock(&mutex);
+	snprintf(out_msg, BUF_SIZ, "%02d:%02d:%02d: %s: %s", tmstruct->tm_hour, tmstruct->tm_min, tmstruct->tm_sec, new_client->name, msg);
 	return 0;
 }
 
@@ -319,7 +313,7 @@ void* clientHandler(void* arg) {
 	
 	/* Clean up once client done and exits */
 	close(new_client->conn_fd);
-	removClient(new_client);
+	removeClient(new_client);
 	return NULL;
 }
 
@@ -362,7 +356,7 @@ client* addClient(int client_fd, struct sockaddr_in client_sa) {
 }
 
 /* Function for removing existing connected clients */
-int removClient(client* del_client) {
+int removeClient(client* del_client) {
 	pthread_mutex_lock(&mutex);
 	client* cur_client = head_client;
 

@@ -29,7 +29,7 @@ void *sendfunc(void *data) {
 			continue; //break; exit; are alternatives
 		}
 
-		if(n > 4096) {
+		if(n > BUF_SIZE) {
 			msg[BUF_SIZE-1] = '\0';
 		}
 
@@ -38,8 +38,8 @@ void *sendfunc(void *data) {
 	}
 
 	/* Send server "EOF" in event of client disconnect (Ctrl-D) */
-	msg[0] = '\0';
-	send(connfd, msg, 0, 0);
+	//msg[0] = '\0';
+	//send(connfd, msg, 0, 0);
 	printf("Exiting.\n");
 
 	return NULL;
