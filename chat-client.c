@@ -26,7 +26,7 @@ void *sendfunc(void *data) {
 	while((n = read(0, msg, BUF_SIZE)) > 0) {
 		if (n < 0) {
 			perror("read");
-			continue; //break; exit; are alternatives
+			continue;
 		}
 
 		if(n > BUF_SIZE) {
