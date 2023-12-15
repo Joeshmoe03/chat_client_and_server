@@ -38,8 +38,6 @@ void *sendfunc(void *data) {
 	}
 
 	/* Send server "EOF" in event of client disconnect (Ctrl-D) */
-	//msg[0] = '\0';
-	//send(connfd, msg, 0, 0);
 	printf("Exiting.\n");
 
 	return NULL;
