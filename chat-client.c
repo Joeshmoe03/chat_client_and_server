@@ -1,5 +1,4 @@
 /* chat-client.c */
-
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -30,13 +29,12 @@ void *sendfunc(void *data) {
 		}
 		
 		/* n shoulder never be > 4096: the max read is 4096. Just ensure null termination. */
-		msg[n] = '\0';
+		msg[n - 1] = '\0';
 		send(connfd, msg, n, 0);
 	}
 
 	/* Send server "EOF" in event of client disconnect (Ctrl-D) */
 	printf("Exiting.\n");
-
 	return NULL;
 }
 
@@ -59,7 +57,6 @@ void *recvfunc(void *data) {
 		msg[bytes_received] = '\0';
 		puts(msg);
 	}
-
 	return NULL;  
 }
 
