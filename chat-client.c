@@ -22,14 +22,14 @@ void *sendfunc(void *data) {
 	int n; 
 
 	/* Infinite loop for send() */
-	while((n = read(0, msg, BUF_SIZE)) > 0) {
+	while((n = read(0, msg, BUF_SIZE - 1)) > 0) {
 		if (n < 0) {
 			perror("read");
 			continue;
 		}
 		
-		/* n shoulder never be > 4096: the max read is 4096. Just ensure null termination. */
-		msg[n - 1] = '\0';
+		/* n shoulder never be > 4096: the max read is 4096. Just ensure null termination. (n-1) */
+		msg[n] = '\0';
 		send(connfd, msg, n, 0);
 	}
 
