@@ -41,14 +41,14 @@ void *sendfunc(void *data) {
 void *recvfunc(void *data) {
 
 	/* Buffer to store incoming message info and its respective length*/
-	char msg[BUF_SIZE+1];
+	char msg[BUF_SIZE];
 	int bytes_received;
 
 	/* Infinite loop for recv() */
 	while(1) {
 
 		/*upon server termination, clients will terminate */
-		if((bytes_received = recv(connfd, msg, BUF_SIZE, 0)) == 0) {
+		if((bytes_received = recv(connfd, msg, BUF_SIZE - 1, 0)) == 0) {
 			puts("Connection closed by remote host.");
 			exit(EXIT_SUCCESS);
 		}
